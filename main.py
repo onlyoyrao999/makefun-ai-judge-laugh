@@ -1,100 +1,96 @@
 #!/usr/bin/env python3
-"""Make the AI Judge Laugh: one office-life joke.
+"""Entry for make.fun's "Make the AI Judge Laugh" bounty.
 
-Writes one joke about office life to /output/entry.txt (the path the
-make.fun program/v1 harness grades).
-
-The joke is built in two halves on purpose: a setup that states a
-painfully true office observation — the printer only ever jams when a
-deadline is minutes away — then a punchline that turns the printer
-into the office's most reliable colleague, the one that never misses
-a deadline (by causing you to miss yours).
+The program produces a single office joke and saves it where the
+grader looks for it. The joke leans on a shared office frustration:
+a printer never misbehaves on a quiet afternoon, only when a
+deadline is minutes away — so the punchline treats the printer as
+the office's most dependable employee, the one that never misses
+a deadline (because it makes sure you do).
 """
 
 import argparse
 import os
 import sys
 
-# The joke, kept as one line of plain text.
-SETUP = "The office printer only jams when the deadline is five minutes away:"
-PUNCHLINE = "it is the only colleague that never misses one."
+JOKE = (
+    "The office printer only jams when the deadline is five minutes away: "
+    "it is the only colleague that never misses one."
+)
 
-JOKE = SETUP + " " + PUNCHLINE
-
-DEFAULT_OUTPUT = "/output/entry.txt"
-
-
-def build_joke() -> str:
-    """Return the single joke line."""
-    return JOKE
+FALLBACK_PATH = "/output/entry.txt"
+MAX_CHARS = 200
 
 
-def parse_args(argv=None):
-    """Command-line options for local runs and debugging."""
+def problems_with(line):
+    """Check a candidate line against the bounty gate.
+
+    Returns a list of issues; an empty list means the line passes:
+    non-blank, at most 200 UTF-8 characters, exactly one line.
+    """
+    issues = []
+    if not line.strip():
+        issues.append("entry is blank")
+    size = len(line.encode("utf-8"))
+    if size > MAX_CHARS:
+        issues.append(f"entry is {size} bytes, over the 200 limit")
+    if len(line.strip().splitlines()) > 1:
+        issues.append("entry must be exactly one line")
+    return issues
+
+
+def save_joke(path):
+    """Write the joke to path, ending with a newline."""
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(JOKE + "\n")
+
+
+def load_joke(path):
+    """Read back whatever was written to path."""
+    with open(path, "r", encoding="utf-8") as handle:
+        return handle.read()
+
+
+def run():
     parser = argparse.ArgumentParser(
-        description="Write the office-life joke to entry.txt.")
+        description="Save the office-printer joke to entry.txt.")
     parser.add_argument(
         "--output", default=None,
-        help="where to write the joke (default: $ENTRY_OUTPUT or "
-             "/output/entry.txt)")
+        help="destination file (default: $ENTRY_OUTPUT or /output/entry.txt)")
     parser.add_argument(
-        "--print", action="store_true",
-        help="also print the joke to stdout instead of only writing it")
-    return parser.parse_args(argv)
+        "--show", action="store_true",
+        help="print the joke to stdout as well as saving it")
+    options = parser.parse_args()
 
-
-def check_joke(joke: str) -> list:
-    """Return a list of gate problems; empty means the joke is valid.
-
-    Mirrors the competition gate: 1-200 UTF-8 characters, not only
-    whitespace, a single line of plain text.
-    """
-    problems = []
-    if not joke.strip():
-        problems.append("joke is empty or only whitespace")
-    if not (1 <= len(joke.encode("utf-8")) <= 200):
-        problems.append(
-            f"joke is {len(joke.encode('utf-8'))} bytes, outside 1-200")
-    if "\n" in joke.strip():
-        problems.append("joke must be a single line")
-    return problems
-
-
-def main(argv=None) -> int:
-    args = parse_args(argv)
-    joke = build_joke()
-
-    problems = check_joke(joke)
-    if problems:
-        for problem in problems:
-            print(f"gate check failed: {problem}", file=sys.stderr)
+    issues = problems_with(JOKE)
+    if issues:
+        for issue in issues:
+            print(f"gate failed: {issue}", file=sys.stderr)
         return 1
 
-    if args.print:
-        print(joke)
+    if options.show:
+        print(JOKE)
 
-    output = args.output or os.environ.get("ENTRY_OUTPUT", DEFAULT_OUTPUT)
-    os.makedirs(os.path.dirname(output), exist_ok=True)
-    with open(output, "w", encoding="utf-8") as handle:
-        handle.write(joke + "\n")
+    target = options.output or os.environ.get("ENTRY_OUTPUT") or FALLBACK_PATH
+    parent = os.path.dirname(target)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    save_joke(target)
 
-    # Read the file back and verify it holds exactly the joke.
-    with open(output, "r", encoding="utf-8") as handle:
-        written = handle.read()
-    if written != joke + "\n":
-        print("read-back check failed: file does not match the joke",
+    back = load_joke(target)
+    if back != JOKE + "\n":
+        print("verification failed: file contents differ from the joke",
               file=sys.stderr)
         return 1
-    readback_problems = check_joke(written.strip())
-    if readback_problems:
-        for problem in readback_problems:
-            print(f"read-back gate check failed: {problem}", file=sys.stderr)
+    if problems_with(back.strip()):
+        print("verification failed: saved file fails the gate",
+              file=sys.stderr)
         return 1
 
-    print(f"wrote {len(joke.split())}-word joke to {output} "
-          f"({len(joke)} chars, read-back verified)")
+    print(f"saved {len(JOKE)}-character joke "
+          f"({len(JOKE.split())} words) to {target}, verified")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(run())
